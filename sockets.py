@@ -25,6 +25,8 @@ sockets = Sockets(app)
 app.debug = True
 
 
+# Obtained from https://github.com/uofa-cmput404/cmput404-slides/blob/master/examples/WebSocketsExamples/chat.py
+# Author: Abram Hindle & Hazel
 class Client:
     def __init__(self):
         self.queue = queue.Queue()
@@ -58,11 +60,15 @@ class World:
         return self.space
 
 
+# Obtained from https://github.com/uofa-cmput404/cmput404-slides/blob/master/examples/WebSocketsExamples/chat.py
+# Author: Abram Hindle & Hazel
 def send_all(msg):
     for client in clients:
         client.put(msg)
 
 
+# Obtained from https://github.com/uofa-cmput404/cmput404-slides/blob/master/examples/WebSocketsExamples/chat.py
+# Author: Abram Hindle & Hazel
 def send_all_json(obj):
     send_all(json.dumps(obj))
 
@@ -98,6 +104,8 @@ def hello():
     return redirect("/static/index.html")
 
 
+# Obtained from https://github.com/uofa-cmput404/cmput404-slides/blob/master/examples/WebSocketsExamples/chat.py
+# Author: Abram Hindle & Hazel
 def read_ws(ws, client):
     '''A greenlet function to read from the websocket and updates the world'''
     try:
@@ -115,6 +123,8 @@ def read_ws(ws, client):
         print("Error: %s" % e)
 
 
+# Obtained from https://github.com/uofa-cmput404/cmput404-slides/blob/master/examples/WebSocketsExamples/chat.py
+# Author: Abram Hindle & Hazel
 @sockets.route('/subscribe')
 def subscribe_socket(ws):
     '''Fufill the websocket URL of /subscribe, every update notify the
