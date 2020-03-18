@@ -12,44 +12,41 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-import flask
+
 from flask import Flask, request, redirect
 from flask_sockets import Sockets
 import gevent
 from gevent import queue
-import time
 import json
-import os
+
 
 app = Flask(__name__)
 sockets = Sockets(app)
 app.debug = True
 
 
+class Client:
+    def __init__(self):
+        self.queue = queue.Queue()
+
+    def put(self, v):
+        self.queue.put_nowait(v)
+
+    def get(self):
+        return self.queue.get()
+
+
 class World:
     def __init__(self):
         self.clear()
-        # we've got listeners now!
-        self.listeners = list()
 
-    def add_set_listener(self, listener):
-        self.listeners.append(listener)
+    def set(self, entity, data):
+        self.space[entity] = data
 
     def update(self, entity, key, value):
         entry = self.space.get(entity, dict())
         entry[key] = value
         self.space[entity] = entry
-        self.update_listeners(entity)
-
-    def set(self, entity, data):
-        self.space[entity] = data
-        self.update_listeners(entity)
-
-    def update_listeners(self, entity):
-        '''update the set listeners'''
-        for listener in self.listeners:
-            listener(entity, self.get(entity))
 
     def clear(self):
         self.space = dict()
@@ -61,9 +58,21 @@ class World:
         return self.space
 
 
-def set_listener(entity, data):
-    '''do something with the update !'''
-    myWorld.set(entity, data)
+def send_all(msg):
+    for client in clients:
+        client.put(msg)
+
+
+def send_all_json(obj):
+    send_all(json.dumps(obj))
+
+
+def generate_OK_json_response(data):
+    response = app.response_class(
+                response=json.dumps(data),
+                status=200,
+                mimetype='application/json')
+    return response
 
 
 # I give this to you, this is how you get the raw body/data portion of a post
@@ -80,7 +89,7 @@ def flask_post_json():
 
 
 myWorld = World()
-myWorld.add_set_listener(set_listener)
+clients = list()
 
 
 @app.route('/')
@@ -91,41 +100,73 @@ def hello():
 
 def read_ws(ws, client):
     '''A greenlet function to read from the websocket and updates the world'''
-    # XXX: TODO IMPLEMENT ME
-    return None
+    try:
+        while True:
+            msg = ws.receive()
+            if (msg is not None):
+                packet = json.loads(msg)
+                send_all_json(packet)
+                for entity in packet:
+                    myWorld.set(entity, packet[entity])
+            else:
+                break
+    except Exception as e:
+        '''Done'''
+        print("Error: %s" % e)
 
 
 @sockets.route('/subscribe')
 def subscribe_socket(ws):
     '''Fufill the websocket URL of /subscribe, every update notify the
        websocket and read updates from the websocket '''
-    # XXX: TODO IMPLEMENT ME
-    return None
+    client = Client()
+    clients.append(client)
+    g = gevent.spawn(read_ws, ws, client)
+    try:
+        # current_world = json.dumps(myWorld.world())
+        # ws.send(current_world)
+        while True:
+            # block here
+            msg = client.get()
+            ws.send(msg)
+    except Exception as e:  # WebSocketError as e:
+        print("WS Error %s" % e)
+    finally:
+        clients.remove(client)
+        gevent.kill(g)
 
 
 @app.route("/entity/<entity>", methods=['POST', 'PUT'])
 def update(entity):
     '''update the entities via this interface'''
-    return None
+    data = flask_post_json()
+    for key in data:
+        myWorld.update(entity, key, data[key])
+    return generate_OK_json_response(data)
 
 
 @app.route("/world", methods=['POST', 'GET'])
 def world():
     '''you should probably return the world here'''
-    return None
+    data = myWorld.world()
+    return generate_OK_json_response(data)
 
 
 @app.route("/entity/<entity>")
 def get_entity(entity):
     '''This is the GET version of the entity interface, return a representation
     of the entity'''
-    return "None"
+    data = myWorld.get(entity)
+    return generate_OK_json_response(data)
 
 
 @app.route("/clear", methods=['POST', 'GET'])
 def clear():
     '''Clear the world out!'''
-    return None
+    data = dict()
+    myWorld.clear()
+    send_all_json({})
+    return generate_OK_json_response(data)
 
 
 if __name__ == "__main__":
